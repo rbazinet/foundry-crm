@@ -85,7 +85,7 @@ jobs:
           echo "EOF_SSH_KEY" >> $GITHUB_OUTPUT
 
       - name: Send deployment started notification
-        uses: dawidd6/action-send-mail@v9
+        uses: dawidd6/action-send-mail@v12
         continue-on-error: true
         with:
           server_address: smtp-relay.brevo.com
@@ -112,18 +112,18 @@ jobs:
             View progress: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           driver: docker-container
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ env.DOCKER_REGISTRY_USER }}
           password: ${{ steps.bws_secrets.outputs.registry_password }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -177,7 +177,7 @@ jobs:
         run: kamal deploy
 
       - name: Send deployment succeeded notification
-        uses: dawidd6/action-send-mail@v9
+        uses: dawidd6/action-send-mail@v12
         continue-on-error: true
         with:
           server_address: smtp-relay.brevo.com
@@ -244,7 +244,7 @@ jobs:
           echo "brevo_smtp_key=$BREVO_SMTP_KEY" >> $GITHUB_OUTPUT
 
       - name: Send deployment failed notification
-        uses: dawidd6/action-send-mail@v9
+        uses: dawidd6/action-send-mail@v12
         continue-on-error: true
         with:
           server_address: smtp-relay.brevo.com

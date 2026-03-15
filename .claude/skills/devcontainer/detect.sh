@@ -57,9 +57,21 @@ fi
 # execute against the worktree's branch, not the main repo's.
 WORKTREE_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -n "$WORKTREE_DIR" ] && [ "$WORKTREE_DIR" != "$PROJECT_ROOT" ]; then
-  # Isolated worktree: has its own compose stack with separate containers/db
-  if [ -f "$WORKTREE_DIR/compose.yaml" ]; then
-    COMPOSE_NAME=$(sed -n "s/^name:\s*[\"']\{0,1\}\([^\"']*\)[\"']\{0,1\}\s*$/\1/p" "$WORKTREE_DIR/compose.yaml" | head -1 || true)
+  # Isolated worktree: sentinel file written by create.sh distinguishes
+  # worktree compose files from project compose files on feature branches.
+  # No project-root boundary check here -- isolated worktrees are always
+  # created by create.sh under .claude/worktrees/, so .claude-worktree
+  # is a sufficient signal. Shared worktrees (else branch) still validate.
+  if [ -f "$WORKTREE_DIR/.claude-worktree" ] && [ -f "$WORKTREE_DIR/compose.yaml" ]; then
+    # create.sh writes `name:` on the first line of compose.yaml; this sed
+    # pattern must match that format. If it fails, abort rather than silently
+    # falling through to the main container name.
+    COMPOSE_FILE="$WORKTREE_DIR/compose.yaml"
+    COMPOSE_NAME=$(sed -n "s/^name:\s*[\"']\{0,1\}\([^\"']*\)[\"']\{0,1\}\s*$/\1/p" "$COMPOSE_FILE" | head -1 || true)
+    if [ -z "$COMPOSE_NAME" ]; then
+      echo "Error: Could not extract compose project name from $COMPOSE_FILE" >&2
+      exit 1
+    fi
     # WORKSPACE stays as-is from devcontainer.json (no relative path needed)
   else
     # Shared worktree: uses main container with adjusted workspace path
@@ -96,14 +108,25 @@ _container_is_running() {
   docker ps --filter "name=^${1}$" --format '{{.Names}}' 2>/dev/null | grep -q .
 }
 
+_start_compose_services() {
+  echo "Container not running. Starting services via docker compose..." >&2
+  docker compose -f "$COMPOSE_FILE" up -d --wait 2>&1 >&2
+}
+
 if ! _container_is_running "$CONTAINER"; then
   CONTAINER="${COMPOSE_NAME}_${SERVICE}_1"
   if ! _container_is_running "$CONTAINER"; then
-    echo "Error: Could not find running container. Tried:" >&2
-    echo "  ${COMPOSE_NAME}-${SERVICE}-1" >&2
-    echo "  ${COMPOSE_NAME}_${SERVICE}_1" >&2
-    echo "Is the devcontainer running?" >&2
-    exit 1
+    _start_compose_services
+    CONTAINER="${COMPOSE_NAME}-${SERVICE}-1"
+    if ! _container_is_running "$CONTAINER"; then
+      CONTAINER="${COMPOSE_NAME}_${SERVICE}_1"
+      if ! _container_is_running "$CONTAINER"; then
+        echo "Error: Could not find running container after starting services. Tried:" >&2
+        echo "  ${COMPOSE_NAME}-${SERVICE}-1" >&2
+        echo "  ${COMPOSE_NAME}_${SERVICE}_1" >&2
+        exit 1
+      fi
+    fi
   fi
 fi
 
